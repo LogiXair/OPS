@@ -1,0 +1,58 @@
+[
+ {
+  "day": 1,
+  "date": "2026-10-12",
+  "revenue_inr": 25259554,
+  "tonnes": 798.9,
+  "legs": 4343,
+  "file": "day-001.json"
+ },
+ {
+  "day": 2,
+  "date": "2026-10-13",
+  "revenue_inr": 26784789,
+  "tonnes": 847.2,
+  "legs": 4587,
+  "file": "day-002.json"
+ },
+ {
+  "day": 3,
+  "date": "2026-10-14",
+  "revenue_inr": 27984434,
+  "tonnes": 878.4,
+  "legs": 4666,
+  "file": "day-003.json"
+ },
+ {
+  "day": 4,
+  "date": "2026-10-15",
+  "revenue_inr": 28451039,
+  "tonnes": 905.8,
+  "legs": 4820,
+  "file": "day-004.json"
+ },
+ {
+  "day": 5,
+  "date": "2026-10-16",
+  "revenue_inr": 26222685,
+  "tonnes": 847.2,
+  "legs": 4613,
+  "file": "day-005.json"
+ },
+ {
+  "day": 6,
+  "date": "2026-10-17",
+  "revenue_inr": 24505789,
+  "tonnes": 795.5,
+  "legs": 4308,
+  "file": "day-006.json"
+ },
+ {
+  "day": 7,
+  "date": "2026-10-18",
+  "revenue_inr": 20131273,
+  "tonnes": 650.4,
+  "legs": 3639,
+  "file": "day-007.json"
+ }
+]
