@@ -202,6 +202,7 @@ tr.sel td{background:rgba(232,82,63,.14)}
 #ops .oh .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
 #ops .oh h2{margin:0;font:800 24px/1.05 var(--display);letter-spacing:-.025em;color:#fff}
 #ops .otabs{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between}
+#ops h3.osec{margin:22px 0 4px;font:800 15px/1.2 var(--display);letter-spacing:-.01em;color:#fff}
 #ops .ob{padding:14px 16px 18px;overflow:auto;display:flex;flex-direction:column;gap:16px;min-height:0;flex:1 1 0;scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
 #ops .ob p{margin:0;font-size:12px;line-height:1.5;color:var(--fg-2)}
 #ops .ogrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
@@ -4388,6 +4389,7 @@ class OpsReport {
       else if (a === 'close') this.show(false);
       else if (a === 'site') { this.show(false); this.ui.app.select({ type: 'site', id: b.getAttribute('data-v') }, true); }
       else if (a === 'csv') this.exportCsv(b.getAttribute('data-v'));
+      else if (a === 'ac') { this.show(false); this.ui.app.select({ type: 'aircraft', id: b.getAttribute('data-v') }, true); }
       else if (a === 'route') { this.show(false); this.ui.app.select({ type: 'route', id: b.getAttribute('data-v') }, true); }
     });
   }
@@ -4403,7 +4405,7 @@ class OpsReport {
     const sim = this.sim, L = sim.led, el = $('ops'), keep = force ? 0 : (el.querySelector('.ob') ? el.querySelector('.ob').scrollTop : 0);
     const hrs = (sim.t - L.t0) / 3600;
     const tabs = ['TODAY', 'FLEET', 'HUBS', 'CORRIDORS', 'HUB LOG', 'DAILY CLOSE'];
-    const scopes = [['ALL', 'ALL LINES'], ['MM', 'MIDDLE-MILE'], ['NV', 'NAVY'], ['OF', 'OFFSHORE']];
+    const scopes = [['ALL', 'ALL LINES'], ['MM', 'INDIA MIDDLE-MILE'], ['SEA', 'SOUTHEAST ASIA'], ['NV', 'NAVY'], ['OF', 'OFFSHORE']];
     let head = '<div class="oh"><div class="row"><span class="cap">LogiXair · company operations · day ' + (L.day + 1) + ' · 06:00 → ' + fmtClock(sim.t) + ' IST · ' + hrs.toFixed(1) + ' h</span><button type="button" class="x" data-oact="close" aria-label="Close">×</button></div>' +
       '<h2>Daily operations report</h2>' +
       '<div class="otabs"><div class="seg">' + tabs.map(t => '<button type="button" data-otab="' + t + '"' + (t === this.tab ? ' class="on"' : '') + '>' + t + '</button>').join('') + '</div>' +
@@ -4475,6 +4477,17 @@ class OpsReport {
       const cs = l => l.map(a => a.cs.replace(/^LX.-/, '')).join(' ');
       return '<tr><td class="w"><button type="button" class="lnk" data-oact="site" data-v="' + S.id + '">' + esc(S.name) + '</button></td><td>' + kindLabel(S) + '</td><td class="r">' + (cap.hangar ? inH.length + ' / ' + cap.hangar : '—') + '</td><td class="r">' + (S.stands.length ? onS.length + ' / ' + S.stands.length : '—') + '</td><td class="r">' + (S.kind === 'MRO' ? chk.length + ' / ' + S.pads.length : chk.length || '—') + '</td><td class="r">' + onP.length + ' / ' + S.pads.length + '</td><td class="r">' + inb + '</td><td class="c-mute wrap">' + (inH.length ? 'hangar ' + cs(inH) : '') + (onS.length ? (inH.length ? ' · ' : '') + 'stands ' + cs(onS) : '') + (chk.length ? (inH.length || onS.length ? ' · ' : '') + 'check ' + cs(chk) : '') + '</td></tr>';
     });
+    // every airframe, one row each: what it is doing now and what it has flown today
+    const t0 = sim.led.t0, acRows = fl.slice().sort((p, q) => p.cs.localeCompare(q.cs)).map(a => {
+      let n = 0, sec = 0, kg = 0, rev = 0; const hh = a.hist || [];
+      for (let i = hh.length - 1; i >= 0; i--) { const e = hh[i]; if (e.t < t0) break; if (e.k !== 'L') continue; n++; sec += e.bl || (e.a ? e.a - e.t : sim.t - e.t); kg += e.kg || 0; rev += e.rev || 0; }
+      const st = this.ui.state(a), air = AIRBORNE[a.phase], where = air ? a.from + ' → ' + a.to : a.site || '—';
+      const pod = a.pod ? a.pod.kg + ' kg ' + POD_TYPES[a.pod.type].label.toLowerCase() : 'empty pod';
+      return '<tr><td class="w"><button type="button" class="lnk" data-oact="ac" data-v="' + a.cs + '">' + a.cs + '</button></td><td>' + a.scn + '</td><td class="c-' + st[1] + '">' + esc(st[0]) + '</td><td>' + esc(where) + '</td><td>' + (a.route || '—') + '</td><td class="c-mute">' + pod + '</td><td class="r">' + n + '</td><td class="r">' + (sec / 3600).toFixed(1) + '</td><td class="r">' + (kg / 1000).toFixed(2) + '</td><td class="r">' + inr(rev) + '</td><td class="r">' + fmtInt(a.fh) + '</td><td class="r">' + Math.max(0, a.nextCheck - a.fh).toFixed(0) + '</td></tr>';
+    });
+    h += '<h3 class="osec">Aircraft · ' + fl.length + ' airframes</h3><p class="src">Every airframe in the fleet, what it is doing now and what it has flown since 06:00. Click a callsign to follow it on the map.</p>' +
+      '<table class="ot"><thead><tr><th>CALLSIGN</th><th>LINE</th><th>NOW</th><th>WHERE / LEG</th><th>CORRIDOR</th><th>POD</th><th class="r">LEGS TODAY</th><th class="r">FH TODAY</th><th class="r">t TODAY</th><th class="r">₹ TODAY</th><th class="r">TOTAL FH</th><th class="r">FH TO CHECK</th></tr></thead><tbody>' + acRows.join('') + '</tbody></table>' +
+      '<h3 class="osec">Where the fleet is parked</h3>';
     h += '<p class="src">Airframes stand down where their last leg ends once demand drops, so no aircraft flies an empty leg home for the night. Line hangars hold ' + LAYOUTS.base.hangar + ' at a base and ' + LAYOUTS.quay.hangar + ' at a shore base; outstations have ' + LAYOUTS.spoke.stands.length + ' night stands. Callsigns are shown by number.</p>' +
       '<table class="ot"><thead><tr><th>SITE</th><th>TYPE</th><th class="r">LINE HANGAR</th><th class="r">STANDS · SLOT · PADS</th><th class="r">IN CHECK</th><th class="r">ON PADS</th><th class="r">INBOUND</th><th>AIRFRAMES HERE</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>';
     return h;
