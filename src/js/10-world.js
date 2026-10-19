@@ -110,6 +110,26 @@ const CARGO_MIX = { wet: 1 / 2.2, OF: 1 / 2.7 };                     // offshore
 
 /* Surface-mode comparison speeds. Road: 500 km in 16 h [thesis]. Boat: 12 kt supply run [model]. */
 const SURFACE = { roadKmh: 31.25, boatKmh: 22.2 };
+/* Surface comparison per corridor [OSRM]: road distance (km) and driving time (s) between the two sites, from OpenStreetMap
+   routing (router.project-osrm.org, fetched 19 Oct 2026). Island legs include the car-ferry crossings OSM knows of.
+   OSRM times assume free-flowing traffic; on Indian highways they run about 1.3x faster than Google Maps' typical times
+   (checked on Bengaluru-Mysuru, Hyderabad-Vijayawada, Chennai-Madurai, Nagpur-Raipur), so road legs are scaled by
+   ROAD_TRAFFIC. Ferry legs are used as routed. Offshore platforms and ships have no road: they compare with a supply boat. */
+const ROAD_TRAFFIC = 1.3;
+const ROAD = { 'C-21': [303, 13482], 'C-33': [569, 24889], 'C-28': [450, 21145], 'C-45': [594, 26816], 'C-52': [371, 16435], 'C-57': [459, 20824], 'C-64': [413, 17871], 'C-12': [163, 7292], 'C-15': [266, 11198], 'C-71': [223, 9598], 'C-74': [302, 12907], 'C-77': [413, 18331], 'G-11': [298, 13755], 'G-14': [170, 7879], 'G-17': [140, 6788], 'G-21': [434, 17283], 'B-11': [387, 18141], 'B-14': [462, 20357], 'B-17': [479, 23850], 'B-22': [276, 12790], 'B-26': [324, 16294], 'B-31': [387, 18109], 'B-41': [257, 14354], 'B-05': [164, 7812], 'B-08': [344, 15834], 'T-20': [294, 14339], 'K-12': [272, 13780], 'K-15': [418, 21190], 'K-19': [559, 26730], 'K-23': [437, 20612], 'K-31': [514, 23953], 'K-03': [104, 5291], 'K-05': [127, 7188], 'K-08': [142, 6947], 'J-11': [206, 11288], 'J-14': [139, 7635], 'J-17': [202, 11971], 'J-21': [411, 23290], 'J-24': [335, 17314], 'J-31': [128, 6944], 'D-11': [265, 16431], 'D-14': [137, 7052], 'D-17': [190, 10113], 'D-21': [303, 15798], 'D-24': [153, 8166], 'D-27': [159, 8576], 'D-31': [233, 11646], 'D-34': [179, 10788], 'L-01': [210, 11456], 'L-02': [115, 5746], 'L-03': [163, 7648], 'L-04': [454, 19418], 'N-K': [634, 30074], 'I-11': [267, 30555], 'I-12': [562, 42969], 'I-13': [832, 88834], 'I-14': [1128, 172430], 'I-15': [399, 18187], 'I-21': [436, 22441], 'I-22': [564, 39657], 'I-23': [518, 66743], 'I-24': [179, 8481], 'I-25': [331, 14689], 'I-31': [910, 182177], 'I-32': [758, 156342], 'I-33': [983, 42118], 'I-34': [1251, 57074], 'I-35': [767, 33030], 'X-01': [436, 30889], 'P-11': [201, 12103], 'P-12': [495, 24258], 'P-13': [592, 42599], 'P-14': [353, 242898], 'P-15': [514, 42413], 'P-21': [524, 44216], 'P-22': [363, 25766], 'P-23': [99, 33639], 'P-24': [260, 18748], 'P-25': [185, 15167], 'P-26': [289, 21841], 'P-27': [564, 79297], 'P-28': [599, 48057], 'P-31': [151, 8983], 'P-32': [655, 42307], 'P-33': [401, 22368], 'P-34': [464, 68678], 'P-35': [314, 16436], 'X-02': [1351, 372330], 'S-11': [320, 16789], 'S-12': [225, 9898], 'S-13': [490, 21370], 'S-14': [798, 39916], 'S-21': [150, 12394], 'S-22': [164, 13998], 'S-23': [219, 12433], 'S-24': [156, 7059], 'S-25': [208, 13021], 'S-26': [316, 13843], 'S-27': [197, 10381], 'S-28': [470, 27120], 'S-29': [529, 23517], 'S-30': [167, 7618], 'X-03': [216, 10225] };
+/* corridors whose road route includes a car-ferry crossing; everything else is road only (Phuket, Penang and Madura are on bridges) */
+const FERRY_LEGS = new Set(['I-11', 'I-12', 'I-13', 'I-14', 'I-21', 'I-22', 'I-23', 'I-31', 'I-32', 'I-33', 'I-34', 'I-35', 'X-01',
+  'P-11', 'P-13', 'P-14', 'P-15', 'P-21', 'P-22', 'P-23', 'P-24', 'P-25', 'P-26', 'P-27', 'P-28', 'P-34', 'X-02', 'S-11', 'S-14', 'S-21', 'S-22', 'S-25', 'S-28']);
+function surfaceOf(R) {
+  const r = ROAD[R.id], fy = FERRY_LEGS.has(R.id);
+  if (r && fy) {                       // island leg: the routed road + ferry trip, or a direct RoRo / cargo sailing if that is quicker [model: 12 kt, 6 h in port]
+    const seaKm = R.direct * 1.15, seaS = seaKm / SURFACE.boatKmh * 3600 + 6 * 3600;
+    return seaS < r[1] ? { km: seaKm, s: seaS, mode: 'SEA FREIGHT' } : { km: r[0], s: r[1], mode: 'ROAD + FERRY' };
+  }
+  if (r) return { km: r[0], s: r[1] * ROAD_TRAFFIC, mode: 'BY ROAD' };
+  return { km: R.km, s: R.km / SURFACE.boatKmh * 3600, mode: 'BY BOAT' };
+}
+
 
 /* Ground handling, seconds of simulated time [model]; pod swap stays under the 10-minute figure [thesis]. */
 const TURN = {
