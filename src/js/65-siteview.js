@@ -202,7 +202,7 @@ class SiteView {
           if (f < 0.10) agvU = -3.2; else if (f < 0.32) agvU = out(mv(0.10, 0.32)); else if (f < 0.52) { agvU = L; lift = Math.sin(mv(0.32, 0.52) * Math.PI); } else if (f < 0.74) agvU = out(1 - mv(0.52, 0.74));
           if (f < 0.44) { P.podOnAc = false; if (f >= 0.10) agvPod = a.pod.type; }
           open = f > 0.06 && f < 0.78 ? 1 : 0;
-        } else if (pad.step === 'POD_OUT' || pad.step === 'POD_IN') P.podOnAc = !!a.pod && pad.step !== 'POD_OUT';
+        } else if (pad.step === 'POD_OUT' || pad.step === 'POD_IN') P.podOnAc = !a.pod || pad.step !== 'POD_OUT';     // an empty pod stays fitted
       }
       if (P.agv) {
         const A = P.agv, q = P.path; A.g.position.set(q.x + q.ux * agvU, S.padElev, q.z + q.uz * agvU); A.g.visible = agvU > -3.1;
@@ -237,7 +237,7 @@ class SiteView {
       R.position.set(nItem.x, nItem.y, nItem.z);
       const wing = 1 - a.tilt / 90, pitch = a.gs > 15 ? clamp(Math.atan2(a.vs, a.gs), -0.16, 0.16) : 0;
       R.rotation.set(-pitch * wing - (a.phase === 'TRANS_IN' ? 0.07 * (1 - wing) * wing * 4 : 0), Math.PI - (a.hdg - S.rot) * DEG, (a.bank || 0) * 0.4 * wing);
-      let podType = a.pod ? a.pod.type : null, rpm = air ? 1 : a.rpm;
+      let podType = a.pod ? a.pod.type : 'EMPTY', rpm = air ? 1 : a.rpm;
       if (a.phase === 'GROUND') { const P = this.pads[a.pad]; if (P && !P.podOnAc) podType = null; }
       s.m.setPod(podType);
       s.m.update({ tilt: a.tilt, rpm, dt, t: this.t, dark, alt: a.alt, lit: a.phase !== 'STANDBY' && a.phase !== 'REST' });

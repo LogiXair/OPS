@@ -25,7 +25,7 @@ const ledRec = () => ({ cons: 0, rev: 0, revDry: 0, revWet: 0, kg: 0, kgDry: 0, 
 const ledAdd = (o, k, v) => { o[k] += v; };
 const isWet = type => !!WET_TYPES[type];
 
-const SNAP_V = 4;
+const SNAP_V = 5;
 
 class Sim {
   constructor(seed) {
@@ -234,7 +234,7 @@ class Sim {
     const sc = this.scn[a.scn], def = sc.def, R = this.routes[a.route];
     if (R.mro) { a.pod = null; a.req = null; return; }
     const outbound = from === R.a || this.sites[from].kind === 'BASE';         // loaded at a base: a full consignor pod
-    if (!outbound && this.rnd() < 0.24) { a.pod = null; a.req = null; return; }       // empty positioning leg
+    if (!outbound && this.rnd() < 0.02) { a.pod = null; a.req = null; return; }       // rare: nothing consolidated in time, the empty pod flies back
     const fs0 = this.sites[from], stg = !silent && fs0.dock && fs0.dock.staged.length ? fs0.dock.staged.shift() : null;     // the oldest pod built at this site's truck dock
     const c = this._cargo(def, stg ? stg.type : null), T = POD_TYPES[c[0]];
     const ld = stg ? { kg: stg.kg, n: stg.n || 1 } : this._podLoad(a.scn, from, outbound), kg = ld.kg;
@@ -250,13 +250,14 @@ class Sim {
   }
   /* what goes into one pod: consignments are added until the pod reaches the load the demand at this site supports right now */
   _podLoad(scn, siteId, outbound) {
+    // hold-for-load: the pod is closed once it reaches the fill the day's cargo supports, never below RULES.minFill
     const lvl = clamp(demandLevel(this.t, scn) * laneFactor(dayOf(this.t), siteId), 0, 1.6);
-    const target = 300 * clamp((outbound ? 0.22 : 0.08) + 0.78 * lvl * (0.7 + 0.6 * this.rnd()), 0.005, 1);
+    const target = L560.payloadKg * clamp(RULES.minFill + (RULES.maxFill - RULES.minFill) * clamp01((lvl - 0.7) / 1.2 + (this.rnd() - 0.5) * 0.3), RULES.minFill, RULES.maxFill);
     let kg = 0, n = 0;
-    while (n < 80) {
+    for (let tries = 0; tries < 200 && kg < target; tries++) {
       const r = this.rnd(), w = r < CONSIGN.small ? 2 + 33 * Math.pow(this.rnd(), 1.5) : r < CONSIGN.small + CONSIGN.medium ? 35 + 85 * this.rnd() : 120 + 180 * this.rnd();
-      if (kg + w > L560.payloadKg) { if (kg > 0) break; continue; }
-      kg += w; n++; if (kg >= target) break;
+      if (kg + w > L560.payloadKg) continue;                                   // does not fit: the next consignment in the queue is tried
+      kg += w; n++;
     }
     return { kg: Math.max(2, Math.round(kg)), n };
   }
@@ -267,7 +268,7 @@ class Sim {
     return pool[Math.floor(this.rnd() * pool.length)];
   }
   /* pilots on shift at the ROC follow demand; an off-shift pilot keeps the aircraft already handed to them until they land */
-  onShift(scn) { const ps = this.scn[scn].pilots; return Math.min(ps.length, Math.max(Math.min(scn === 'SEA' ? 4 : 2, ps.length), Math.ceil(Math.min(1, demandLevel(this.t, scn)) * ps.length * 1.1))); }
+  onShift(scn) { const ps = this.scn[scn].pilots; return Math.min(ps.length, Math.max(Math.min(scn === 'SEA' ? 4 : 2, ps.length), Math.ceil(rosterLevel(this.t, scn) * ps.length * 1.1))); }
   _assignPilot(a) {
     const ps = this.scn[a.scn].pilots, k = this.onShift(a.scn);
     const fs = this.sites[a.from], z = fs && fs.def.zone, inZ = p => !z || !p.zone || p.zone === z;          // a country's aircraft are supervised from that country's ROC
@@ -735,7 +736,7 @@ class Sim {
   /* ----- roster: stand-downs follow demand, rest happens where the last leg ended ----- */
   _active(scn) {
     let n = 0, fl = 0; for (const a of this.aircraft) { if (a.scn !== scn || a.phase === 'STANDBY') continue; fl++; if (a.phase !== 'REST' && !(a.phase === 'GROUND' && a.site && this.sites[a.site].pads[a.pad] && this.sites[a.site].pads[a.pad].step === 'MAINT')) n++; }
-    return { n, fl, want: Math.round(Math.min(1, demandLevel(this.t, scn)) * fl) };
+    return { n, fl, want: Math.round(rosterLevel(this.t, scn) * fl) };
   }
   restCap(site) { const L = site.L; return { hangar: site.def.hangar != null ? site.def.hangar : L.hangar || 0, stands: site.stands.length }; }
   restHere(site) { return (site.rest || []).map(cs => this.byCs[cs]); }

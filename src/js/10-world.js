@@ -93,6 +93,11 @@ const _DL = {};
 const demandLevel = (t, scn) => { const q = Math.floor(t / 15), c = _DL[scn]; if (c && c.q === q) return c.v; const v = demandAt(q * 15, scn) * dayFactor(Math.floor((q * 15 - 6 * 3600) / 86400) + 1, scn) * hourNoise(q * 15, scn); _DL[scn] = { q, v }; return v; };
 /* Consignments [model]: a pod consolidates parcels and part-loads, 2 to 35 kg mostly, some 35 to 120 kg, a few up to a full 300 kg pallet pair. */
 const CONSIGN = { small: 0.55, medium: 0.35 };
+/* Operating rules [LogiXair]: a pod is dispatched at least 75% full (consolidated, hold-for-load), and each airframe flies
+   10 to 12 hours a day; the day-to-day swing in cargo shows up inside those bands. Prices stay at the tariff. */
+const RULES = { minFill: 0.75, maxFill: 0.92, fhDay: [10, 12], lift: { MM: 1.12, SEA: 1.12, NV: 0.78, OF: 1.32 } };
+/* roster share wanted at this hour: the hourly curve, lifted so the fleet averages 10-12 FH a day, with the day's swing kept inside that band */
+const rosterLevel = (t, scn) => { const d = demandLevel(t, scn) / Math.max(0.05, demandAt(t, scn)), k = clamp(0.92 + 0.22 * (d - 0.8) / 0.5, 0.92, 1.14); return Math.min(1, demandAt(t, scn) * k * (RULES.lift[scn] || 1.12)); };
 /* Each rest includes the daily inspection; a duty runs at most maxFh before the airframe must stand down [model]. */
 /* A check due within mxWindowFh is pulled forward and done overnight: at the MRO hub when it is close to the base (mroNearKm), else in the base line hangar [model]. */
 const DUTY = { maxFh: 12, minRestS: 4 * 3600, minDutyFh: 1.5, mxWindowFh: 50, mroNearKm: 80, lineCheckS: 2.5 * 3600 };
@@ -172,7 +177,7 @@ const LAYOUTS = {
 const SCENARIOS = [
   {
     id: 'MM', region: 'IN', name: 'India middle-mile', sub: 'Southern and central network', stage: 'STAGE 03 · MIDDLE-MILE', color: '#78AAFF', prefix: 'LXA', csBase: 1000,
-    blurb: 'Five bases at Hyderabad, Nagpur, Bengaluru, Chennai and Coimbatore feed 38 city and port distribution centres across eight states with a fleet of 250 aircraft, on legs of 60 to 490 km. Hub-to-hub trunks and four DC-to-DC lateral lines let cargo move between zones without a road leg.',
+    blurb: 'Six bases at Hyderabad, Nagpur, Bengaluru, Chennai, Coimbatore and Madurai feed 37 city and port distribution centres across eight states with a fleet of 250 aircraft, on legs of 60 to 490 km. Hub-to-hub trunks and four DC-to-DC lateral lines let cargo move between zones without a road leg.',
     view: { lat: 14.6, lon: 78.6, dist: 3900, az: 0, tilt: 64 },
     surface: 'road',
     /* band: cruise-level band of the corridors that start at this base, so corridors of different bases cross with vertical separation [model] */
@@ -181,6 +186,7 @@ const SCENARIOS = [
       { id: 'BLR', name: 'Bengaluru Base', kind: 'BASE', layout: 'base', lat: 12.760, lon: 77.740, npads: 8, refuel: true, band: 3400, spares: 2, src: 'model' },
       { id: 'MAA', name: 'Chennai Base', kind: 'BASE', layout: 'base', lat: 12.830, lon: 79.950, npads: 8, refuel: true, band: 4600, spares: 2, src: 'model' },
       { id: 'NGP', name: 'Nagpur Base', kind: 'BASE', layout: 'base', lat: 21.040, lon: 79.050, npads: 8, refuel: true, band: 3400, spares: 2, src: 'model' },
+      { id: 'IXM', name: 'Madurai Base', kind: 'BASE', layout: 'base', lat: 9.930, lon: 78.080, npads: 8, refuel: true, band: 3400, spares: 2, src: 'model' },
       { id: 'CJB', name: 'Coimbatore Base', kind: 'BASE', layout: 'base', lat: 11.100, lon: 77.180, npads: 8, refuel: true, band: 2200, spares: 2, src: 'model' },
       { id: 'MRO-A', name: 'MRO Hub Alpha', kind: 'MRO', layout: 'mro', lat: 17.452, lon: 78.318, npads: 4, refuel: true, src: 'vector' },
       { id: 'MRO-B', name: 'MRO Hub Bravo', kind: 'MRO', layout: 'mro', lat: 12.570, lon: 77.950, npads: 4, refuel: true, src: 'model' },
@@ -204,7 +210,6 @@ const SCENARIOS = [
       { id: 'MTM', name: 'Machilipatnam Port DC', kind: 'DC', layout: 'spoke', port: true, lat: 16.220, lon: 81.120, npads: 2, refuel: true, src: 'model' },
       { id: 'ATP', name: 'Anantapur DC', kind: 'DC', layout: 'spoke', lat: 14.720, lon: 77.700, npads: 2, refuel: true, src: 'model' },
       { id: 'COK', name: 'Kochi Port DC', kind: 'DC', layout: 'spoke', port: true, lat: 9.950, lon: 76.320, npads: 2, refuel: true, src: 'model' },
-      { id: 'IXM', name: 'Madurai DC', kind: 'DC', layout: 'spoke', lat: 10.030, lon: 78.100, npads: 2, refuel: true, src: 'model' },
       // Bengaluru zone
       { id: 'MNG', name: 'Mangaluru Port DC', kind: 'DC', layout: 'spoke', port: true, lat: 12.830, lon: 74.950, npads: 2, refuel: true, src: 'model' },
       { id: 'HBX', name: 'Hubballi DC', kind: 'DC', layout: 'spoke', lat: 15.400, lon: 75.270, npads: 2, refuel: true, src: 'model' },
@@ -225,78 +230,88 @@ const SCENARIOS = [
       { id: 'CCJ', name: 'Kozhikode Port DC', kind: 'DC', layout: 'spoke', port: true, lat: 11.250, lon: 75.780, npads: 2, refuel: true, src: 'model' },
       { id: 'TRV', name: 'Thiruvananthapuram Port DC', kind: 'DC', layout: 'spoke', port: true, lat: 8.490, lon: 76.950, npads: 2, refuel: true, src: 'model' },
       { id: 'TEN', name: 'Tirunelveli DC', kind: 'DC', layout: 'spoke', lat: 8.730, lon: 77.700, npads: 2, refuel: true, src: 'model' },
+      { id: 'NGL', name: 'Nagercoil DC', kind: 'DC', layout: 'spoke', lat: 8.180, lon: 77.430, npads: 2, refuel: true, src: 'model' },
+      { id: 'RMM', name: 'Rameswaram Port DC', kind: 'DC', layout: 'spoke', port: true, lat: 9.290, lon: 79.300, npads: 2, refuel: true, src: 'model' },
       { id: 'SXV', name: 'Salem DC', kind: 'DC', layout: 'spoke', lat: 11.660, lon: 78.150, npads: 2, refuel: true, src: 'model' }
     ],
     routes: [
       // C corridors start at Hyderabad
-      { id: 'C-21', a: 'HYD', b: 'VJA', n: 11, wps: [[17.56, 78.90], [17.05, 79.62], [16.70, 80.28]],
+      { id: 'C-21', a: 'HYD', b: 'VJA', n: 9, wps: [[17.56, 78.90], [17.05, 79.62], [16.70, 80.28]],
         cont: [['Suryapet', 17.14, 79.62], ['Kodad', 16.99, 79.97], ['Nandigama', 16.77, 80.29]] },
-      { id: 'C-33', a: 'HYD', b: 'VTZ', n: 9, wps: [[17.74, 79.30], [17.56, 80.60], [17.46, 81.70], [17.62, 82.60]],
+      { id: 'C-33', a: 'HYD', b: 'VTZ', n: 8, wps: [[17.74, 79.30], [17.56, 80.60], [17.46, 81.70], [17.62, 82.60]],
         cont: [['Jangaon', 17.72, 79.18], ['Kothagudem', 17.55, 80.62], ['Rampachodavaram', 17.44, 81.77]] },
       { id: 'C-28', a: 'HYD', b: 'NGP', n: 6, trunk: true, wps: [[18.30, 78.52], [19.30, 78.70], [20.20, 78.90]],
         cont: [['Kamareddy', 18.32, 78.34], ['Adilabad', 19.67, 78.53], ['Hinganghat', 20.55, 78.84]] },
-      { id: 'C-45', a: 'HYD', b: 'SRC', n: 8, wps: [[17.47, 78.82], [16.90, 79.05], [15.90, 79.35], [14.60, 79.70]],
+      { id: 'C-45', a: 'HYD', b: 'SRC', n: 7, wps: [[17.47, 78.82], [16.90, 79.05], [15.90, 79.35], [14.60, 79.70]],
         cont: [['Nalgonda', 17.05, 79.27], ['Markapur', 15.74, 79.27], ['Atmakur', 14.62, 79.62]] },
-      { id: 'C-52', a: 'HYD', b: 'MTM', n: 7, wps: [[17.52, 78.83], [16.75, 79.72], [16.22, 80.30], [16.20, 80.80]],
+      { id: 'C-52', a: 'HYD', b: 'MTM', n: 6, wps: [[17.52, 78.83], [16.75, 79.72], [16.22, 80.30], [16.20, 80.80]],
         cont: [['Miryalaguda', 16.87, 79.57], ['Sattenapalle', 16.39, 80.15], ['Tenali', 16.24, 80.64]] },
       { id: 'C-57', a: 'HYD', b: 'KKD', n: 5, wps: [[17.63, 79.30], [17.36, 80.35], [17.12, 81.20], [16.90, 81.62]],
         cont: [['Mahabubabad', 17.60, 80.00], ['Sathupalli', 17.25, 80.83], ['Kovvur', 17.01, 81.72]] },
       { id: 'C-64', a: 'HYD', b: 'ATP', n: 5, wps: [[17.40, 78.72], [16.95, 78.62], [16.20, 78.45], [15.45, 78.30]],
         cont: [['Kalwakurthy', 16.66, 78.49], ['Nandikotkur', 15.86, 78.27], ['Tadipatri', 14.91, 78.01]] },
-      { id: 'C-12', a: 'HYD', b: 'WGL', n: 5, wps: [[17.85, 79.05]], cont: [['Bhongir', 17.51, 78.89], ['Jangaon', 17.72, 79.18]] },
+      { id: 'C-12', a: 'HYD', b: 'WGL', n: 4, wps: [[17.85, 79.05]], cont: [['Bhongir', 17.51, 78.89], ['Jangaon', 17.72, 79.18]] },
       { id: 'C-15', a: 'HYD', b: 'KNL', n: 4, wps: [[16.80, 78.30]], cont: [['Mahabubnagar', 16.74, 77.99], ['Gadwal', 16.23, 77.80]] },
       { id: 'C-71', a: 'HYD', b: 'GLB', n: 4, wps: [[17.48, 77.70]], cont: [['Vikarabad', 17.34, 77.90], ['Tandur', 17.25, 77.58]] },
       { id: 'C-74', a: 'HYD', b: 'SSE', n: 4, wps: [[17.72, 77.40], [17.70, 76.60]], cont: [['Zaheerabad', 17.68, 77.61], ['Bidar', 17.91, 77.52], ['Akkalkot', 17.53, 76.21]] },
       { id: 'C-77', a: 'HYD', b: 'BEP', n: 4, wps: [[16.60, 77.75]], cont: [['Raichur', 16.20, 77.36], ['Sindhanur', 15.77, 76.75]] },
       { id: 'M-01', a: 'HYD', b: 'MRO-A', n: 0, mro: true, wps: [[17.71, 78.36], [17.57, 78.26]], cont: [] },
       // G corridors start at Nagpur
-      { id: 'G-11', a: 'NGP', b: 'RPR', n: 7, wps: [[21.18, 80.30]], cont: [['Bhandara', 21.17, 79.65], ['Rajnandgaon', 21.10, 81.03]] },
+      { id: 'G-11', a: 'NGP', b: 'RPR', n: 6, wps: [[21.18, 80.30]], cont: [['Bhandara', 21.17, 79.65], ['Rajnandgaon', 21.10, 81.03]] },
       { id: 'G-14', a: 'NGP', b: 'AMR', n: 4, wps: [[21.05, 78.40]], cont: [['Talegaon', 20.89, 78.43]] },
       { id: 'G-17', a: 'NGP', b: 'CDP', n: 5, wps: [[20.50, 79.25]], cont: [['Warora', 20.23, 79.00]] },
       { id: 'G-21', a: 'NGP', b: 'IXU', n: 5, wps: [[20.70, 77.40], [20.25, 76.30]], cont: [['Akola', 20.70, 77.00], ['Jalna', 19.84, 75.88]] },
       // B corridors start at Bengaluru
-      { id: 'B-11', a: 'BLR', b: 'MNG', n: 7, wps: [[12.62, 77.20], [12.75, 76.40], [12.85, 75.60]],
+      { id: 'B-11', a: 'BLR', b: 'MNG', n: 6, wps: [[12.62, 77.20], [12.75, 76.40], [12.85, 75.60]],
         cont: [['Channapatna', 12.65, 77.21], ['Channarayapatna', 12.90, 76.39], ['Sakleshpur', 12.94, 75.78]] },
       { id: 'B-14', a: 'BLR', b: 'HBX', n: 5, wps: [[12.80, 77.28], [13.22, 76.92], [14.10, 76.30], [14.90, 75.65]],
         cont: [['Kunigal', 13.02, 77.03], ['Hiriyur', 13.94, 76.62], ['Ranebennur', 14.62, 75.63]] },
-      { id: 'B-17', a: 'BLR', b: 'COK', n: 7, wps: [[12.10, 77.25], [11.55, 76.75], [10.95, 76.50], [10.40, 76.20]],
+      { id: 'B-17', a: 'BLR', b: 'COK', n: 5, wps: [[12.10, 77.25], [11.55, 76.75], [10.95, 76.50], [10.40, 76.20]],
         cont: [['Kollegal', 12.15, 77.11], ['Gudalur', 11.50, 76.50], ['Palakkad', 10.78, 76.65]] },
       { id: 'B-22', a: 'BLR', b: 'CJB', n: 4, trunk: true, wps: [[12.20, 77.72], [11.60, 77.45]],
         cont: [['Denkanikottai', 12.53, 77.79], ['Mettur', 11.79, 77.80], ['Gobichettipalayam', 11.45, 77.44]] },
-      { id: 'B-26', a: 'BLR', b: 'SRC', n: 7, wps: [[12.95, 78.30], [13.20, 78.95], [13.36, 79.50]],
+      { id: 'B-26', a: 'BLR', b: 'SRC', n: 6, wps: [[12.95, 78.30], [13.20, 78.95], [13.36, 79.50]],
         cont: [['Mulbagal', 13.16, 78.39], ['Chittoor', 13.22, 79.10], ['Puttur', 13.44, 79.55]] },
       { id: 'B-31', a: 'BLR', b: 'KPT', n: 5, wps: [[13.20, 78.35], [13.80, 78.95], [14.15, 79.55]],
         cont: [['Madanapalle', 13.55, 78.50], ['Rayachoti', 14.05, 78.75], ['Gudur', 14.15, 79.85]] },
       { id: 'B-41', a: 'BLR', b: 'ATP', n: 4, wps: [[13.15, 78.02], [13.85, 78.00], [14.40, 77.85]],
         cont: [['Chintamani', 13.40, 78.05], ['Bagepalli', 13.78, 77.79], ['Dharmavaram', 14.41, 77.72]] },
-      { id: 'B-05', a: 'BLR', b: 'MYQ', n: 5, wps: [[12.52, 77.20]], cont: [['Ramanagara', 12.72, 77.28], ['Mandya', 12.52, 76.90]] },
+      { id: 'B-05', a: 'BLR', b: 'MYQ', n: 4, wps: [[12.52, 77.20]], cont: [['Ramanagara', 12.72, 77.28], ['Mandya', 12.52, 76.90]] },
       { id: 'B-08', a: 'BLR', b: 'RQY', n: 4, wps: [[12.70, 77.00], [13.20, 76.20]], cont: [['Hassan', 13.00, 76.10], ['Tarikere', 13.71, 75.82]] },
-      { id: 'T-20', a: 'BLR', b: 'MAA', n: 9, trunk: true, wps: [[12.62, 78.20], [12.80, 79.10], [12.80, 79.60]],
+      { id: 'T-20', a: 'BLR', b: 'MAA', n: 8, trunk: true, wps: [[12.62, 78.20], [12.80, 79.10], [12.80, 79.60]],
         cont: [['Krishnagiri', 12.53, 78.21], ['Ambur', 12.79, 78.72], ['Kanchipuram', 12.83, 79.70]] },
       { id: 'M-02', a: 'BLR', b: 'MRO-B', n: 0, mro: true, wps: [[12.70, 77.86]], cont: [] },
       // K corridors start at Chennai (Kancheepuram district)
-      { id: 'K-12', a: 'MAA', b: 'TRZ', n: 5, wps: [[12.20, 79.50], [11.50, 79.10]],
+      { id: 'K-12', a: 'MAA', b: 'TRZ', n: 4, wps: [[12.20, 79.50], [11.50, 79.10]],
         cont: [['Tindivanam', 12.23, 79.65], ['Vriddhachalam', 11.52, 79.32], ['Ariyalur', 11.14, 79.08]] },
-      { id: 'K-15', a: 'MAA', b: 'IXM', n: 7, wps: [[12.30, 79.30], [11.35, 78.65], [10.75, 78.30], [10.25, 78.10]],
+      { id: 'K-15', a: 'MAA', b: 'IXM', n: 5, wps: [[12.30, 79.30], [11.35, 78.65], [10.75, 78.30], [10.25, 78.10]],
         cont: [['Tiruvannamalai', 12.23, 79.07], ['Thuraiyur', 11.14, 78.60], ['Dindigul', 10.36, 77.98]] },
-      { id: 'K-19', a: 'MAA', b: 'TUT', n: 8, wps: [[12.10, 79.70], [11.45, 79.55], [10.60, 79.38], [9.85, 78.95], [9.20, 78.45]],
+      { id: 'K-19', a: 'MAA', b: 'TUT', n: 6, wps: [[12.10, 79.70], [11.45, 79.55], [10.60, 79.38], [9.85, 78.95], [9.20, 78.45]],
         cont: [['Chidambaram', 11.40, 79.69], ['Pattukkottai', 10.42, 79.32], ['Paramakudi', 9.55, 78.59]] },
       { id: 'K-23', a: 'MAA', b: 'CJB', n: 5, trunk: true, wps: [[12.45, 79.25], [11.95, 78.55], [11.48, 78.10], [11.30, 77.70]],
         cont: [['Chengam', 12.31, 78.79], ['Rasipuram', 11.46, 78.19], ['Erode', 11.34, 77.72]] },
-      { id: 'K-31', a: 'MAA', b: 'MTM', n: 7, wps: [[13.22, 79.86], [13.75, 79.78], [14.45, 79.86], [15.50, 79.92], [15.95, 80.55]],
+      { id: 'K-31', a: 'MAA', b: 'MTM', n: 6, wps: [[13.22, 79.86], [13.75, 79.78], [14.45, 79.86], [15.50, 79.92], [15.95, 80.55]],
         cont: [['Naidupeta', 13.90, 79.90], ['Kavali', 14.92, 79.99], ['Bapatla', 15.90, 80.47]] },
       { id: 'K-03', a: 'MAA', b: 'VLR', n: 3, wps: [[12.95, 79.55]], cont: [['Arakkonam', 13.08, 79.67]] },
       { id: 'K-05', a: 'MAA', b: 'PNY', n: 4, wps: [[12.40, 79.98]], cont: [['Marakkanam', 12.19, 79.94]] },
-      { id: 'K-08', a: 'MAA', b: 'TIR', n: 5, wps: [[13.20, 79.70]], cont: [['Tiruttani', 13.18, 79.62]] },
+      { id: 'K-08', a: 'MAA', b: 'TIR', n: 4, wps: [[13.20, 79.70]], cont: [['Tiruttani', 13.18, 79.62]] },
       { id: 'M-03', a: 'MAA', b: 'MRO-B', n: 0, mro: true, wps: [[12.70, 79.55], [12.58, 78.90], [12.45, 78.30]], cont: [] },
       // J corridors start at Coimbatore
-      { id: 'J-11', a: 'CJB', b: 'COK', n: 5, wps: [[10.75, 76.80]], cont: [['Palakkad', 10.78, 76.65], ['Chalakudy', 10.30, 76.33]] },
-      { id: 'J-14', a: 'CJB', b: 'TCR', n: 4, wps: [[10.90, 76.75]], cont: [['Ottapalam', 10.77, 76.38]] },
-      { id: 'J-17', a: 'CJB', b: 'CCJ', n: 4, wps: [[11.30, 76.70]], cont: [['Mannarkkad', 10.99, 76.46], ['Malappuram', 11.07, 76.07]] },
-      { id: 'J-21', a: 'CJB', b: 'TRV', n: 7, wps: [[10.40, 77.10], [9.30, 77.05]], cont: [['Pollachi', 10.66, 77.01], ['Kumily', 9.61, 77.17], ['Punalur', 9.02, 76.93]] },
-      { id: 'J-24', a: 'CJB', b: 'TEN', n: 4, wps: [[10.20, 77.55], [9.30, 77.70]], cont: [['Palani', 10.45, 77.52], ['Rajapalayam', 9.45, 77.55]] },
-      { id: 'J-27', a: 'CJB', b: 'IXM', n: 4, wps: [[10.60, 77.65]], cont: [['Dharapuram', 10.74, 77.53], ['Oddanchatram', 10.49, 77.75]] },
-      { id: 'J-31', a: 'CJB', b: 'SXV', n: 4, wps: [[11.40, 77.70]], cont: [['Bhavani', 11.45, 77.68]] },
+      { id: 'J-11', a: 'CJB', b: 'COK', n: 4, wps: [[10.75, 76.80]], cont: [['Palakkad', 10.78, 76.65], ['Chalakudy', 10.30, 76.33]] },
+      { id: 'J-14', a: 'CJB', b: 'TCR', n: 3, wps: [[10.90, 76.75]], cont: [['Ottapalam', 10.77, 76.38]] },
+      { id: 'J-17', a: 'CJB', b: 'CCJ', n: 3, wps: [[11.30, 76.70]], cont: [['Mannarkkad', 10.99, 76.46], ['Malappuram', 11.07, 76.07]] },
+      { id: 'J-21', a: 'CJB', b: 'TRV', n: 5, wps: [[10.40, 77.10], [9.30, 77.05]], cont: [['Pollachi', 10.66, 77.01], ['Kumily', 9.61, 77.17], ['Punalur', 9.02, 76.93]] },
+      { id: 'J-24', a: 'CJB', b: 'TEN', n: 3, wps: [[10.20, 77.55], [9.30, 77.70]], cont: [['Palani', 10.45, 77.52], ['Rajapalayam', 9.45, 77.55]] },
+      { id: 'J-31', a: 'CJB', b: 'SXV', n: 3, wps: [[11.40, 77.70]], cont: [['Bhavani', 11.45, 77.68]] },
+      // D corridors start at Madurai, the southern base
+      { id: 'D-11', a: 'IXM', b: 'COK', n: 5, wps: [[9.95, 77.30]], cont: [['Theni', 10.01, 77.48], ['Kumily', 9.61, 77.17], ['Kothamangalam', 10.06, 76.63]] },
+      { id: 'D-14', a: 'IXM', b: 'TUT', n: 4, wps: [[9.40, 78.10]], cont: [['Aruppukottai', 9.51, 78.10], ['Ottapidaram', 8.91, 78.02]] },
+      { id: 'D-17', a: 'IXM', b: 'CJB', n: 4, trunk: true, wps: [[10.45, 77.75]], cont: [['Oddanchatram', 10.49, 77.75], ['Dharapuram', 10.74, 77.53]] },
+      { id: 'D-21', a: 'IXM', b: 'TRV', n: 4, wps: [[9.20, 77.45]], cont: [['Rajapalayam', 9.45, 77.55], ['Tenkasi', 8.96, 77.30]] },
+      { id: 'D-24', a: 'IXM', b: 'TEN', n: 3, wps: [[9.30, 77.95]], cont: [['Kovilpatti', 9.17, 77.87]] },
+      { id: 'D-27', a: 'IXM', b: 'TRZ', n: 3, wps: [[10.45, 78.45]], cont: [['Melur', 10.03, 78.34], ['Viralimalai', 10.60, 78.55]] },
+      { id: 'D-31', a: 'IXM', b: 'NGL', n: 3, wps: [[8.90, 77.70]], cont: [['Sankarankovil', 9.17, 77.54], ['Valliyur', 8.38, 77.61]] },
+      { id: 'D-34', a: 'IXM', b: 'RMM', n: 3, wps: [[9.55, 78.75]], cont: [['Paramakudi', 9.55, 78.59], ['Ramanathapuram', 9.37, 78.83]] },
       // L lines: DC to DC, flown in their own upper band
       { id: 'L-01', a: 'HBX', b: 'GOI', n: 3, band: 5000, wps: [[15.45, 74.60]], cont: [['Dharwad', 15.46, 75.01]] },
       { id: 'L-02', a: 'HBX', b: 'IXG', n: 2, band: 5000, wps: [], cont: [] },
@@ -510,5 +525,6 @@ const POD_TYPES = {
   COLD: { label: 'COLD CHAIN', prefix: 'CC', color: '#E9EEF2', stripe: '#78AAFF' },
   LIQ:  { label: 'LIQUID',     prefix: 'LQ', color: '#B9C0C6', stripe: '#FAC83C' },
   SENS: { label: 'SENSITIVE',  prefix: 'SN', color: '#D8D4CC', stripe: '#C08CF0' },
-  DEF:  { label: 'DEFENCE',    prefix: 'DF', color: '#6F7A72', stripe: '#3DDC97' }
+  DEF:  { label: 'DEFENCE',    prefix: 'DF', color: '#6F7A72', stripe: '#3DDC97' },
+  EMPTY: { label: 'EMPTY POD',  prefix: 'EP', color: '#9AA0A6', stripe: '#5A6068' }     // every airframe flies with a pod fitted, loaded or empty
 };
