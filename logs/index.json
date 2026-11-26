@@ -350,5 +350,13 @@
   "tonnes": 1337.2,
   "legs": 5167,
   "file": "day-044.json"
+ },
+ {
+  "day": 45,
+  "date": "2026-11-25",
+  "revenue_inr": 40265865,
+  "tonnes": 1332.9,
+  "legs": 5161,
+  "file": "day-045.json"
  }
 ]
